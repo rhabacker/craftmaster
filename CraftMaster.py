@@ -97,6 +97,7 @@ class CraftMaster(object):
 
     @staticmethod
     def _titleCandidatesFromEnvironment():
+        errors = []
         candidates = [
             ("CI_MERGE_REQUEST_TITLE", os.environ.get("CI_MERGE_REQUEST_TITLE")),
             ("CI_COMMIT_TITLE", os.environ.get("CI_COMMIT_TITLE")),
@@ -125,11 +126,9 @@ class CraftMaster(object):
                     ]
                 )
             except (OSError, ValueError) as e:
-                candidates.append(
-                    ("GITHUB_EVENT_PATH", f"Unable to read event payload: {e}")
-                )
+                errors.append(f"GITHUB_EVENT_PATH={githubEventPath!r}: {e}")
 
-        return [(source, title) for source, title in candidates if title]
+        return [(source, title) for source, title in candidates if title], errors
 
     def _setDefaultCraftPackage(self):
         if os.environ.get("CRAFT_PACKAGE"):
@@ -138,13 +137,18 @@ class CraftMaster(object):
             )
             return
 
-        candidates = self._titleCandidatesFromEnvironment()
+        candidates, errors = self._titleCandidatesFromEnvironment()
         if not candidates:
+            errorDetails = ""
+            if errors:
+                errorDetails = " Unable to use title source(s): " + "; ".join(errors) + "."
             self._log(
                 "Warning: CRAFT_PACKAGE was not set and no merge request or commit title "
                 "environment variable was found. Expected CI_MERGE_REQUEST_TITLE or "
                 "CI_COMMIT_TITLE in the format '[<package>] Description' or "
-                "'<package>: Description'. Continuing without CRAFT_PACKAGE.",
+                "'<package>: Description'."
+                + errorDetails
+                + " Continuing without CRAFT_PACKAGE.",
                 stream=sys.stderr,
             )
             return
@@ -165,6 +169,7 @@ class CraftMaster(object):
             "from the available merge request or commit title(s). Expected the title to "
             "start with '[<package>] Description' or '<package>: Description'. Checked: "
             + "; ".join(malformed)
+            + (". Unable to use title source(s): " + "; ".join(errors) if errors else "")
             + ". Continuing without CRAFT_PACKAGE.",
             stream=sys.stderr,
         )
